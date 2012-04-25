@@ -1,6 +1,6 @@
 /* ===========================================================================
 	
-	File: debug
+	File: trace
 
 	Author - John Dunning
 	Copyright - 2012 John Dunning.  All rights reserved.
@@ -15,34 +15,104 @@
 
 /*
 	To do:
+		- escape quotation marks 
+
+	Done:
+		- capture the return value and display it
+
 		- call it trace
 
-		- capture the return value and display it
 */
 
 
 try {(function(){
-	debug = function(
-		inWatches,
+	// =======================================================================
+	function forEach(obj, iterator, context) {
+		if (obj == null) return;
+		if (obj.length === +obj.length) {
+			for (var i = 0, l = obj.length; i < l; i++) {
+					// i in obj seems to be false when it's an array extracted
+					// from customData
+				if (iterator.call(context, obj[i], i, obj) === false) return;
+			}
+		} else {
+			for (var key in obj) {
+				if (hasOwnProperty.call(obj, key)) {
+					if (iterator.call(context, obj[key], key, obj) === false) return;
+				}
+			}
+		}
+	}
+
+
+	// =======================================================================
+	function map(obj, iterator, context) {
+		var	results	= [];
+		if (obj	== null) return	results;
+
+		forEach(obj, function(value, index, list) {
+			results[results.length] = iterator.call(context, value, index, list);
+		});
+		return results;
+	}
+
+
+	// =======================================================================
+	function quote(
+		inString)
+	{
+		return '"' + inString + '"';
+	}
+
+
+	// =======================================================================
+	function logWatched(
+		inStatement,
+		inFunctionName)
+	{
+		var test = inStatement;
+		inFunctionName = inFunctionName.slice(0, -1);
+		
+		if (/[<>=]+/.test(test)) {
+			test = '(' + test + ')';
+			return '(' + test + ' ? log("' + inFunctionName + " >>> " + test + 
+				' :", ' + test + ') : "");';
+		} else {
+			return 'log("' + inFunctionName + " >>> " + test + ':", ' + test + ');';
+		}
+	}
+
+		
+	// =======================================================================
+	trace = function(
+		inWatched,
+		inFunctionName,
 		inFunction)
 	{
-		function quote(
-			inString)
-		{
-			return '"' + inString + '"';
+		if (typeof inWatched == "function") {
+			inFunction = inWatched;
+			inFunctionName = "";
+			inWatched = [];
+		}
+
+		if (typeof inWatched == "string") {
+			inFunction = inFunctionName;
+			inFunctionName = inWatched;
+			inWatched = [];
+		}
+
+		if (typeof inFunctionName == "function") {
+			inFunction = inFunctionName;
+			inFunctionName = "";
 		}
 		
-		if (typeof inWatches == "function") {
-			inFunction = inWatches;
-			inWatches = [];
+		if (inFunctionName) {
+			inFunctionName += ": ";
 		}
-		
+
 		if (!inFunction) {
-			return;
+			return "";
 		}
-		
-//log("caller", arguments.callee.caller.toString());
-//log("caller", arguments.callee.caller + "");
 
 		var code = inFunction.toString(),
 			codeMatch = code.match(/function\s+([^(]+)?\(([^)]*)\)\s*\{([\s\S]*)\}/),
@@ -52,54 +122,47 @@ try {(function(){
 				// the arguments.callee.caller property.  ffs.
 			callingFunc = arguments.callee.caller.toString(),
 			callerMatch = callingFunc.match(/function\s+([^(]+)?\(([^)]*)\)\s*\{[\s\S]*\}/),
-			functionName = callerMatch[1] ? (callerMatch[1] + ": ") : "",
+			functionName = inFunctionName || 
+				(callerMatch[1] ? (callerMatch[1] + ": ") : ""),
 			params = callerMatch[2] ? callerMatch[2].split(/\s*,\s*/) : [],
 				// slice off the : from the functionName, if any
-			paramLog = [quote(functionName.slice(0, -1)), quote("(")];
+			paramLog = [quote(functionName.slice(0, -1)), quote("(")],
+			watchedVars = "";
 
-		for (var i = 0; i < params.length; i++) {
-			var param = params[i];
-			
-			paramLog.push(quote(param + ":"), param);
-		}
+			// create a log statement to display the function's parameters
+		paramLog = paramLog.concat(map(params, function(param) {
+			return [quote(param + ":"), param];
+		}));
 		
-			// create a log statement for the function's parameters
 		paramLog.push(quote(")"));
 		paramLog = 'log(' + paramLog.join(", ") + ')\n';
+		
+		if (inWatched) {
+			watchedVars = map(inWatched, function(watched) {
+					// argh, there's some global native function called "watch"?
+					// and we can't shadow it with a local var?  wtf?
+				return logWatched(watched, functionName);
+			});
+			watchedVars = watchedVars.join("\n") + "\n";
+		}
 
-		body = body.replace(/^\s*([^\/\n]{2}[^\n]+);\s*\n/mg, 
+			// add a log statement after each ;\n to display the previous line
+		body = body.replace(/^\s*([^\/\n]{2}[^\n]+;)\s*\n/mg, 
 			function(
 				inWholeLine,
 				inStatement)
 			{
-				return inWholeLine + 'log("' + functionName + inStatement + '");\n';
+				return inWholeLine + 'log("' + functionName + inStatement + '");\n' + 
+					watchedVars;
 			}
 		);
 
-//		body = 'log("calling ' + functionName + '");\n + body';
-		
-		var wrapper = "(function(){" + paramLog + body + "})();";
-//		var wrapper = "(function(" + params.join(", ") + "){" + body + "}).apply(this, arguments);";
-//		var wrapper = "Function('" + params.join("', '") + "').apply(this, arguments);";
-log(wrapper);
+			// wrap the body in an anonymous function so our caller can execute
+			// it in the caller's context
+		var wrapper = 'log("' + functionName + 'return", (function(){' + paramLog + body + '})());';
+//log("wrapper", wrapper);
 
 		return wrapper;
-		
-		
-//		return "eval(" + wrapper + ")";
-		
-		return function()
-		{
-//			with (this) {
-//				var result = eval(wrapper);
-//			};
-//			return result;
-			return eval(wrapper);
-//			return arguments.callee.caller.eval(wrapper);
-		};
-		
-//log(params);
-		return Function.constructor.apply(Function, params);
 	}
 })();} catch (exception) {
 	if (exception.lineNumber) {
