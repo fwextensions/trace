@@ -17,6 +17,12 @@
 	To do:
 		- escape quotation marks 
 
+		- put logs after if and for/while loops
+
+		- put watched vars on one line? 
+			gets tricky when you have tests and don't want to show anything
+			if the test doesn't match 
+
 	Done:
 		- capture the return value and display it
 
@@ -67,18 +73,21 @@ try {(function(){
 
 	// =======================================================================
 	function logWatched(
-		inStatement,
+		inExpression,
 		inFunctionName)
 	{
-		var test = inStatement;
 		inFunctionName = inFunctionName.slice(0, -1);
+		
+		var test = inExpression,
+			prefix = "     ";
+//			prefix = " >>> ";
 		
 		if (/[<>=]+/.test(test)) {
 			test = '(' + test + ')';
-			return '(' + test + ' ? log("' + inFunctionName + " >>> " + test + 
+			return '(' + test + ' ? log("' + inFunctionName + prefix + test + 
 				' :", ' + test + ') : "");';
 		} else {
-			return 'log("' + inFunctionName + " >>> " + test + ':", ' + test + ');';
+			return 'log("' + inFunctionName + prefix + test + ':", ' + test + ');';
 		}
 	}
 
@@ -152,6 +161,9 @@ try {(function(){
 				inWholeLine,
 				inStatement)
 			{
+					// escape all the double quotes in the string
+				inStatement = inStatement.replace(/"/g, '\\"');
+				
 				return inWholeLine + 'log("' + functionName + inStatement + '");\n' + 
 					watchedVars;
 			}
