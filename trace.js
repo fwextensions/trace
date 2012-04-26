@@ -15,15 +15,15 @@
 
 /*
 	To do:
-		- escape quotation marks 
-
-		- put logs after if and for/while loops
-
 		- put watched vars on one line? 
 			gets tricky when you have tests and don't want to show anything
 			if the test doesn't match 
 
 	Done:
+		- escape quotation marks 
+
+		- put logs after if and for/while loops
+
 		- capture the return value and display it
 
 		- call it trace
@@ -80,7 +80,6 @@ try {(function(){
 		
 		var test = inExpression,
 			prefix = "     ";
-//			prefix = " >>> ";
 		
 		if (/[<>=]+/.test(test)) {
 			test = '(' + test + ')';
@@ -98,6 +97,18 @@ try {(function(){
 		inFunctionName,
 		inFunction)
 	{
+		function logStatement(
+			inWholeLine,
+			inStatement)
+		{
+				// escape all the double quotes in the string
+			inStatement = inStatement.replace(/"/g, '\\"');
+
+			return inWholeLine + 'log("' + functionName + inStatement + '");\n' + 
+				watchedVars;
+		}
+
+
 		if (typeof inWatched == "function") {
 			inFunction = inWatched;
 			inFunctionName = "";
@@ -136,7 +147,8 @@ try {(function(){
 			params = callerMatch[2] ? callerMatch[2].split(/\s*,\s*/) : [],
 				// slice off the : from the functionName, if any
 			paramLog = [quote(functionName.slice(0, -1)), quote("(")],
-			watchedVars = "";
+			watchedVars = "",
+			wrapper;
 
 			// create a log statement to display the function's parameters
 		paramLog = paramLog.concat(map(params, function(param) {
@@ -155,24 +167,17 @@ try {(function(){
 			watchedVars = watchedVars.join("\n") + "\n";
 		}
 
-			// add a log statement after each ;\n to display the previous line
+			// add a log call after each ;\n to display the previous statement
 		body = body.replace(/^\s*([^\/\n]{2}[^\n]+;)\s*\n/mg, 
-			function(
-				inWholeLine,
-				inStatement)
-			{
-					// escape all the double quotes in the string
-				inStatement = inStatement.replace(/"/g, '\\"');
-				
-				return inWholeLine + 'log("' + functionName + inStatement + '");\n' + 
-					watchedVars;
-			}
-		);
+			logStatement);
+			
+			// add a log call after the opening brace of an if/for/while block
+		body = body.replace(/\s*((?:if|for|while)\s*\([^{]+\)\s*\{)/g, 
+			logStatement);
 
 			// wrap the body in an anonymous function so our caller can execute
 			// it in the caller's context
-		var wrapper = 'log("' + functionName + 'return", (function(){' + paramLog + body + '})());';
-//log("wrapper", wrapper);
+		wrapper = 'log("' + functionName + 'return", (function(){' + paramLog + body + '})());';
 
 		return wrapper;
 	}
