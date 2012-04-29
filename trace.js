@@ -14,7 +14,32 @@
 
 
 /*
+	To use:
+	
+	fw.runScript(fw.appJsCommandsDir + "/trace.js");
+
+	function myBuggyFunc(foo, bar, baz)
+	{
+		return eval(trace(function() {
+		
+		var dom = fw.getDocumentDOM();
+		dom.selectAll();
+		dom.deleteSelection();
+
+		}));
+	}
+
+	watch variables 
+	pass in a name for the function
+	if you see an if statement logged, means that branch was entered
+	don't pass in the dom
+	
 	To do:
+		- make it work with module calls
+			toString sometimes puts all the statements on one line, so the
+			regex doesn't match anything 
+			also looks like in that case, some " don't get escaped
+		
 		- put watched vars on one line? 
 			gets tricky when you have tests and don't want to show anything
 			if the test doesn't match 
@@ -102,7 +127,7 @@ try {(function(){
 			inStatement)
 		{
 				// escape all the double quotes in the string
-			inStatement = inStatement.replace(/"/g, '\\"');
+			inStatement = inStatement.replace(/"/mg, '\\"');
 
 			return inWholeLine + 'log("' + functionName + inStatement + '");\n' + 
 				watchedVars;
@@ -156,7 +181,7 @@ try {(function(){
 		}));
 		
 		paramLog.push(quote(")"));
-		paramLog = 'log(' + paramLog.join(", ") + ')\n';
+		paramLog = 'log(' + paramLog.join(", ") + ');\n';
 		
 		if (inWatched) {
 			watchedVars = map(inWatched, function(watched) {
@@ -176,8 +201,11 @@ try {(function(){
 			logStatement);
 
 			// wrap the body in an anonymous function so our caller can execute
-			// it in the caller's context
-		wrapper = 'log("' + functionName + 'return", (function(){' + paramLog + body + '})());';
+			// it in the caller's context.  then capture that function's return
+			// value, log it, and return it from another anonymous function.
+		wrapper = '(function(){ var returnValue = (function(){' + 
+			paramLog + body + 
+			'})(); log("' + functionName + 'return", returnValue); return returnValue; })();';
 
 		return wrapper;
 	}
