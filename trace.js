@@ -35,10 +35,15 @@
 	don't pass in the dom
 	
 	To do:
+		- maybe have an option to wrap everything in a try/catch and only log
+			on exceptions
+			return 'try {' + inWholeLine + '} catch (e) { log("' + functionName + 'ERROR: ' + inStatement + '"); throw(e); }\n' + logCall;
+			problem is, we'd have to understand the block structure of the code
+			to not wrap try/catch around just the opening of a for loop, say
+
 		- make it work with module calls
 			toString sometimes puts all the statements on one line, so the
 			regex doesn't match anything 
-			also looks like in that case, some " don't get escaped
 		
 		- put watched vars on one line? 
 			gets tricky when you have tests and don't want to show anything
@@ -56,7 +61,14 @@
 */
 
 
-try {(function(){
+try { (function() {
+	if (typeof log != "function") {
+		alert("Before using the trace() library, the Fireworks Console extension must be installed.  It can be downloaded from here:\n\n" + 
+			"http://johndunning.com/fireworks/about/FWConsole");
+		return;
+	}
+	
+	
 	// =======================================================================
 	function forEach(obj, iterator, context) {
 		if (obj == null) return;
@@ -92,7 +104,7 @@ try {(function(){
 	function quote(
 		inString)
 	{
-		return '"' + inString + '"';
+		return '"' + inString.replace(/"/mg, "'") + '"';
 	}
 
 
@@ -126,14 +138,28 @@ try {(function(){
 			inWholeLine,
 			inStatement)
 		{
-				// escape all the double quotes in the string
-			inStatement = inStatement.replace(/"/mg, '\\"');
-
-			return inWholeLine + 'log("' + functionName + inStatement + '");\n' + 
+				// for some reason, replace(/(?:[^\\])"/mg, '$1\\"') doesn't
+				// escape the second quote in "".  so just do a brute force
+				// conversion of double quotes to single.
+			inStatement = inStatement.replace(/"/mg, "'");
+			
+				// display the function 
+			var logCall = 'log("' + functionName + inStatement + '");\n' + 
 				watchedVars;
+			
+			if (/^(return|continue|break)[\s;]/.test(inStatement)) {
+					// since putting a log call after return, continue or break 
+					// is pointless, put it before the statement
+				return logCall + inWholeLine;
+			} else {
+					// put the log call after the statement, so that it won't
+					// be logged if the statement throws an exception
+				return inWholeLine + logCall;
+			}
 		}
 
 
+			// adjust the optional parameters 
 		if (typeof inWatched == "function") {
 			inFunction = inWatched;
 			inFunctionName = "";
@@ -160,17 +186,21 @@ try {(function(){
 		}
 
 		var code = inFunction.toString(),
+				// pull out the body of the function
 			codeMatch = code.match(/function\s+([^(]+)?\(([^)]*)\)\s*\{([\s\S]*)\}/),
 			body = codeMatch[3],
 				// we can't call this "caller", because that creates a property
 				// called "caller" on our function object, which then overwrites
 				// the arguments.callee.caller property.  ffs.
 			callingFunc = arguments.callee.caller.toString(),
-			callerMatch = callingFunc.match(/function\s+([^(]+)?\(([^)]*)\)\s*\{[\s\S]*\}/),
+				// pull out the calling function's name and params
+			callingMatch = callingFunc.match(/function\s+([^(]+)?\(([^)]*)\)\s*\{[\s\S]*\}/),
+				// ignore the calling function's name if one was passed in
 			functionName = inFunctionName || 
-				(callerMatch[1] ? (callerMatch[1] + ": ") : ""),
-			params = callerMatch[2] ? callerMatch[2].split(/\s*,\s*/) : [],
-				// slice off the : from the functionName, if any
+				(callingMatch[1] ? (callingMatch[1] + ": ") : ""),
+			params = callingMatch[2] ? callingMatch[2].split(/\s*,\s*/) : [],
+				// include the function name as the first string in the log call
+				// that lists the params, slicing off the trailing : 
 			paramLog = [quote(functionName.slice(0, -1)), quote("(")],
 			watchedVars = "",
 			wrapper;
@@ -193,23 +223,32 @@ try {(function(){
 		}
 
 			// add a log call after each ;\n to display the previous statement
-		body = body.replace(/^\s*([^\/\n]{2}[^\n]+;)\s*\n/mg, 
-			logStatement);
-			
-			// add a log call after the opening brace of an if/for/while block
-		body = body.replace(/\s*((?:if|for|while)\s*\([^{]+\)\s*\{)/g, 
+		body = body.replace(/^\s*([^\n]+;)\s*\n/mg, 
 			logStatement);
 
+			// add a log call after the opening brace of an if/for/while block.
+			// but do so only if there's a space in front of the if, to avoid
+			// sticking log calls in the middle of another log call, which can
+			// happen with a nested function definition.  FW returns the body of
+			// the nested function all on one line when doing toString, so the
+			// replace call above will log the whole line.  but then this if
+			// replace will see if statements inside the log string and replace
+			// them, breaking the code.  requiring a space before the keyword
+			// won't match in the nested function case, since FW removes all 
+			// the whitespace from the function body.
+		body = body.replace(/\s((?:if|for|while)\s*\([^{]+\)\s*\{)/g, 
+			logStatement);
+			
 			// wrap the body in an anonymous function so our caller can execute
 			// it in the caller's context.  then capture that function's return
 			// value, log it, and return it from another anonymous function.
 		wrapper = '(function(){ var returnValue = (function(){' + 
 			paramLog + body + 
 			'})(); log("' + functionName + 'return", returnValue); return returnValue; })();';
-
+		
 		return wrapper;
 	}
-})();} catch (exception) {
+})(); } catch (exception) {
 	if (exception.lineNumber) {
 		alert([exception, exception.lineNumber, exception.fileName].join("\n"));
 	} else {
