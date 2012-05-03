@@ -101,10 +101,57 @@ try { (function() {
 
 
 	// =======================================================================
-	function quote(
-		inString)
+	function getScopeChain(
+		inCaller)
 	{
-		return '"' + inString.replace(/"/mg, "'") + '"';
+		function createGetter(
+			inName,
+			inScope)
+		{
+			return function()
+			{
+					// get the value from the scope that contains this variable 
+				return inScope[inName];
+			}
+		}
+		
+		
+		function createSetter(
+			inName,
+			inScope)
+		{
+			return function(
+				inValue)
+			{
+					// set the value on the scope that contains this variable 
+				inScope[inName] = inValue;
+			}
+		}
+
+
+		function addScope(
+			inCaller,
+			inScope)
+		{
+			if (inCaller.caller) {
+					// add the variables from our caller's scope first, in case
+					// we shadow some vars that are also defined in the caller
+					// scope
+				inScope = addScope(inCaller.caller, inScope);
+			}
+			
+			var callerScope = inCaller.__call__;
+			
+			for (var name in callerScope) {
+				inScope.__defineGetter__(name, createGetter(name, callerScope));
+				inScope.__defineSetter__(name, createSetter(name, callerScope));
+			}
+			
+			return inScope;
+		}
+		
+		
+		return addScope(inCaller, {});
 	}
 
 
@@ -131,20 +178,14 @@ try { (function() {
 	// =======================================================================
 	trace = function(
 		inWatched,
-		inFunctionName,
-		inFunction)
+		inFunctionName)
 	{
 		function logStatement(
 			inWholeLine,
 			inStatement)
 		{
-				// for some reason, replace(/(?:[^\\])"/mg, '$1\\"') doesn't
-				// escape the second quote in "".  so just do a brute force
-				// conversion of double quotes to single.
-			inStatement = inStatement.replace(/"/mg, "'");
-			
-				// display the function 
-			var logCall = 'log("' + functionName + inStatement + '");\n' + 
+				// display the function name and statement in the console
+			var logCall = 'log(' + (functionName + inStatement).quote() + ');\n' + 
 				watchedVars;
 			
 			if (/^(return|continue|break)[\s;]/.test(inStatement)) {
@@ -161,66 +202,62 @@ try { (function() {
 
 			// adjust the optional parameters 
 		if (typeof inWatched == "function") {
-			inFunction = inWatched;
 			inFunctionName = "";
 			inWatched = [];
 		}
 
 		if (typeof inWatched == "string") {
-			inFunction = inFunctionName;
 			inFunctionName = inWatched;
 			inWatched = [];
 		}
 
 		if (typeof inFunctionName == "function") {
-			inFunction = inFunctionName;
 			inFunctionName = "";
 		}
 		
-		if (inFunctionName) {
-			inFunctionName += ": ";
-		}
-
-		if (!inFunction) {
-			return "";
-		}
-
-		var code = inFunction.toString(),
-				// pull out the body of the function
-			codeMatch = code.match(/function\s+([^(]+)?\(([^)]*)\)\s*\{([\s\S]*)\}/),
-			body = codeMatch[3],
 				// we can't call this "caller", because that creates a property
 				// called "caller" on our function object, which then overwrites
 				// the arguments.callee.caller property.  ffs.
-			callingFunc = arguments.callee.caller.toString(),
-				// pull out the calling function's name and params
-			callingMatch = callingFunc.match(/function\s+([^(]+)?\(([^)]*)\)\s*\{[\s\S]*\}/),
+		var callerFunc = arguments.callee.caller,
+			callerCode = arguments.callee.caller.toString(),
+				// pull out the body and params of the function
+			codeMatch = callerCode.match(/function\s+([^(]+)?\(([^)]*)\)\s*\{([\s\S]*)\}/),
+			body = codeMatch[3],
+			params = codeMatch[2] ? codeMatch[2].split(/\s*,\s*/) : [],
 				// ignore the calling function's name if one was passed in
-			functionName = inFunctionName || 
-				(callingMatch[1] ? (callingMatch[1] + ": ") : ""),
-			params = callingMatch[2] ? callingMatch[2].split(/\s*,\s*/) : [],
+			functionName = inFunctionName || callerFunc.name,
 				// include the function name as the first string in the log call
-				// that lists the params, slicing off the trailing : 
-			paramLog = [quote(functionName.slice(0, -1)), quote("(")],
+				// that lists the params
+			paramLog = [functionName.quote(), "(".quote()],
 			watchedVars = "",
 			wrapper;
+			
+			// add a colon after the function name, if there is one
+		functionName = functionName ? functionName + ": " : "";
 
 			// create a log statement to display the function's parameters
 		paramLog = paramLog.concat(map(params, function(param) {
-			return [quote(param + ":"), param];
+			return [(param + ":").quote(), param];
 		}));
 		
-		paramLog.push(quote(")"));
+		paramLog.push(")".quote());
 		paramLog = 'log(' + paramLog.join(", ") + ');\n';
 		
 		if (inWatched) {
 			watchedVars = map(inWatched, function(watched) {
 					// argh, there's some global native function called "watch"?
-					// and we can't shadow it with a local var?  wtf?
+					// and we can't shadow it with a local var?  wtf?  ah, it's
+					// actually an incredibly useful watch() function to get 
+					// callbacks when a property changes.  booyah.
 				return logWatched(watched, functionName);
 			});
 			watchedVars = watchedVars.join("\n") + "\n";
 		}
+		
+// look for return trace and take the body after that call
+// so could have some statements that aren't traced before trace()
+
+		body = body.replace(/(return\s+)?trace\(\s*\)\s*;/g, "");
 
 			// add a log call after each ;\n to display the previous statement
 		body = body.replace(/^\s*([^\n]+;)\s*\n/mg, 
@@ -245,8 +282,10 @@ try { (function() {
 		wrapper = '(function(){ var returnValue = (function(){' + 
 			paramLog + body + 
 			'})(); log("' + functionName + 'return", returnValue); return returnValue; })();';
-		
-		return wrapper;
+
+		with (getScopeChain(callerFunc)) {
+			return eval(wrapper);
+		}
 	}
 })(); } catch (exception) {
 	if (exception.lineNumber) {
