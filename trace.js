@@ -18,16 +18,21 @@
 	
 	fw.runScript(fw.appJsCommandsDir + "/trace.js");
 
-	function myBuggyFunc(foo, bar, baz)
+	function myBuggyFunc(count)
 	{
-		return eval(trace(function() {
+		return trace();
 		
 		var dom = fw.getDocumentDOM();
 		dom.selectAll();
 		dom.deleteSelection();
-
-		}));
+		
+		for (var i = 0; i < count; i++) {
+			dom.clipPaste();
+			dom.moveSelectionTo({ x: i * 10, y: i * 10 });
+		}
 	}
+
+	myBuggyFunc();
 
 	watch variables 
 	pass in a name for the function
@@ -35,11 +40,17 @@
 	don't pass in the dom
 	
 	To do:
+		- make sure returning a function from a function and then tracing the
+			returned one has the right scope 
+
 		- maybe have an option to wrap everything in a try/catch and only log
 			on exceptions
 			return 'try {' + inWholeLine + '} catch (e) { log("' + functionName + 'ERROR: ' + inStatement + '"); throw(e); }\n' + logCall;
 			problem is, we'd have to understand the block structure of the code
 			to not wrap try/catch around just the opening of a for loop, say
+
+		- maybe use watch() to track the watched variables and log only when
+			they change
 
 		- make it work with module calls
 			toString sometimes puts all the statements on one line, so the
@@ -71,17 +82,17 @@ try { (function() {
 	
 	// =======================================================================
 	function forEach(obj, iterator, context) {
-		if (obj == null) return;
+		if (obj == null) { return; }
 		if (obj.length === +obj.length) {
 			for (var i = 0, l = obj.length; i < l; i++) {
 					// i in obj seems to be false when it's an array extracted
 					// from customData
-				if (iterator.call(context, obj[i], i, obj) === false) return;
+				if (iterator.call(context, obj[i], i, obj) === false) { return; }
 			}
 		} else {
 			for (var key in obj) {
 				if (hasOwnProperty.call(obj, key)) {
-					if (iterator.call(context, obj[key], key, obj) === false) return;
+					if (iterator.call(context, obj[key], key, obj) === false) { return; }
 				}
 			}
 		}
@@ -91,17 +102,38 @@ try { (function() {
 	// =======================================================================
 	function map(obj, iterator, context) {
 		var	results	= [];
-		if (obj	== null) return	results;
+		if (obj	== null) { return results; }
 
 		forEach(obj, function(value, index, list) {
 			results[results.length] = iterator.call(context, value, index, list);
 		});
+		
 		return results;
 	}
 
 
 	// =======================================================================
-	function getScopeChain(
+	function logWatched(
+		inExpression,
+		inFunctionName)
+	{
+		inFunctionName = inFunctionName.slice(0, -1);
+		
+		var test = inExpression,
+			prefix = "     ";
+		
+		if (/[<>=]+/.test(test)) {
+			test = '(' + test + ')';
+			return '(' + test + ' ? log("' + inFunctionName + prefix + test + 
+				' :", ' + test + ') : "");';
+		} else {
+			return 'log("' + inFunctionName + prefix + test + ':", ' + test + ');';
+		}
+	}
+
+
+	// =======================================================================
+	function getScopeFacade(
 		inCaller)
 	{
 		function createGetter(
@@ -130,48 +162,61 @@ try { (function() {
 
 
 		function addScope(
-			inCaller,
-			inScope)
+			inScope,
+			inFacade)
 		{
-			if (inCaller.caller) {
+				// add a getter and setter for every variable in this scope.
+				// these functions will get/set the values from/in the scope
+				// the var is originally from, rather than the inFacade object.
+			for (var name in inScope) {
+				inFacade.__defineGetter__(name, createGetter(name, inScope));
+				inFacade.__defineSetter__(name, createSetter(name, inScope));
+			}
+		}
+
+
+		function walkCallerChain(
+			inCaller,
+			inFacade)
+		{
+			var callerScope = inCaller.__parent__;
+			
+			if (callerScope.__facade__) {
+					// we've hit a scope that was created by an earlier call to
+					// trace().  if we tried to add that scope to our facade,
+					// we'd get in an endless loop, so flee!  
+				return inFacade;
+			} else if (inCaller.caller) {
 					// add the variables from our caller's scope first, in case
 					// we shadow some vars that are also defined in the caller
 					// scope
-				inScope = addScope(inCaller.caller, inScope);
+				inFacade = arguments.callee(inCaller.caller, inFacade);
 			}
 			
-			var callerScope = inCaller.__call__;
+				// add our scope to the facade
+			addScope(callerScope, inFacade);
 			
-			for (var name in callerScope) {
-				inScope.__defineGetter__(name, createGetter(name, callerScope));
-				inScope.__defineSetter__(name, createSetter(name, callerScope));
-			}
-			
-			return inScope;
+			return inFacade;
 		}
-		
-		
-		return addScope(inCaller, {});
-	}
 
 
-	// =======================================================================
-	function logWatched(
-		inExpression,
-		inFunctionName)
-	{
-		inFunctionName = inFunctionName.slice(0, -1);
+		var facade = {};
+
+			// first add all the parent scopes from our call chain
+		walkCallerChain(inCaller, facade);
 		
-		var test = inExpression,
-			prefix = "     ";
+			// then add the local variables from our call, so that they can 
+			// shadow ones in the parent scope, if needed
+		addScope(inCaller.__call__, facade);
 		
-		if (/[<>=]+/.test(test)) {
-			test = '(' + test + ')';
-			return '(' + test + ' ? log("' + inFunctionName + prefix + test + 
-				' :", ' + test + ') : "");';
-		} else {
-			return 'log("' + inFunctionName + prefix + test + ':", ' + test + ');';
-		}
+			// add a flag to this object so we can tell we created it, so that
+			// if the function we're tracing calls another function that is also
+			// traced, we won't get into an infinite loop.  if our caller had 
+			// defined a __facade__ variable somewhere in its scope, too bad.
+			// it's getting stomped on.
+		facade.__facade__ = true;
+			
+		return facade; 
 	}
 
 		
@@ -214,7 +259,7 @@ try { (function() {
 		if (typeof inFunctionName == "function") {
 			inFunctionName = "";
 		}
-		
+
 				// we can't call this "caller", because that creates a property
 				// called "caller" on our function object, which then overwrites
 				// the arguments.callee.caller property.  ffs.
@@ -256,6 +301,7 @@ try { (function() {
 		
 // look for return trace and take the body after that call
 // so could have some statements that aren't traced before trace()
+// show an alert if trace can't be found, as the caller must be calling us through some other reference 
 
 		body = body.replace(/(return\s+)?trace\(\s*\)\s*;/g, "");
 
@@ -277,13 +323,16 @@ try { (function() {
 			logStatement);
 			
 			// wrap the body in an anonymous function so our caller can execute
-			// it in the caller's context.  then capture that function's return
+			// it in the caller's scope.  then capture that function's return
 			// value, log it, and return it from another anonymous function.
 		wrapper = '(function(){ var returnValue = (function(){' + 
 			paramLog + body + 
 			'})(); log("' + functionName + 'return", returnValue); return returnValue; })();';
 
-		with (getScopeChain(callerFunc)) {
+			// create a facade object that maps all of the identifiers in the
+			// scope chain for our caller to the owning scope, and then eval the 
+			// code within that fake scope
+		with (getScopeFacade(callerFunc)) {
 			return eval(wrapper);
 		}
 	}
