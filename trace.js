@@ -133,6 +133,14 @@ try { (function() {
 
 
 	// =======================================================================
+	function Facade()
+	{
+		// this is an empty class that we use just to check whether a scope
+		// that's encountered in getScopeFacade is actually a Facade
+	}
+	
+
+	// =======================================================================
 	function getScopeFacade(
 		inCaller)
 	{
@@ -181,7 +189,7 @@ try { (function() {
 		{
 			var callerScope = inCaller.__parent__;
 			
-			if (callerScope.__facade__) {
+			if (callerScope instanceof Facade) {
 					// we've hit a scope that was created by an earlier call to
 					// trace().  if we tried to add that scope to our facade,
 					// we'd get in an endless loop, so flee!  
@@ -200,7 +208,11 @@ try { (function() {
 		}
 
 
-		var facade = {};
+			// we use an empty Facade object to store the scope values so that
+			// we can tell we created it, using instanceof.  that way, if the 
+			// function we're tracing calls another function that is also
+			// traced, we won't get into an infinite loop.  
+		var facade = new Facade();
 
 			// first add all the parent scopes from our call chain
 		walkCallerChain(inCaller, facade);
@@ -208,13 +220,6 @@ try { (function() {
 			// then add the local variables from our call, so that they can 
 			// shadow ones in the parent scope, if needed
 		addScope(inCaller.__call__, facade);
-		
-			// add a flag to this object so we can tell we created it, so that
-			// if the function we're tracing calls another function that is also
-			// traced, we won't get into an infinite loop.  if our caller had 
-			// defined a __facade__ variable somewhere in its scope, too bad.
-			// it's getting stomped on.
-		facade.__facade__ = true;
 			
 		return facade; 
 	}
@@ -271,17 +276,16 @@ try { (function() {
 			params = codeMatch[2] ? codeMatch[2].split(/\s*,\s*/) : [],
 				// ignore the calling function's name if one was passed in
 			functionName = inFunctionName || callerFunc.name,
-				// include the function name as the first string in the log call
-				// that lists the params
-			paramLog = [functionName.quote(), "(".quote()],
+			paramLog,
 			watchedVars = "",
 			wrapper;
 			
 			// add a colon after the function name, if there is one
 		functionName = functionName ? functionName + ": " : "";
 
-			// create a log statement to display the function's parameters
-		paramLog = paramLog.concat(map(params, function(param) {
+			// create a log statement to display the function's parameters.
+			// include the function name as the first string in the log call.
+		paramLog = [functionName.slice(0, -1).quote(), "(".quote()].concat(map(params, function(param) {
 			return [(param + ":").quote(), param];
 		}));
 		
