@@ -52,8 +52,6 @@
 			problem is, we'd have to understand the block structure of the code
 			to not wrap try/catch around just the opening of a for loop, say
 
-		- try tracing a recursive function
-
 		- maybe use watch() to track the watched variables and log only when
 			they change
 
@@ -70,6 +68,8 @@
 			if the test doesn't match 
 
 	Done:
+		- try tracing a recursive function
+
 		- make sure returning a function from a function and then tracing the
 			returned one has the right scope 
 
