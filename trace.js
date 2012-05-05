@@ -12,36 +12,43 @@
 
 
 /*
-	First, install trace.js in a known location, like in the 
-	Fireworks/Configuration/Commands folder. 
+	First, install the Fireworks Console extension from here:
+	http://johndunning.com/fireworks/about/FWConsole
+
+	Then restart Fireworks and open the console panel.
+
+	Install trace.js in a known location, like in the Fireworks/Configuration/Commands 
+	folder.  In your script, call runScript to load the trace command:
 	
-	fw.runScript(fw.appJsCommandsDir + "/trace.js");
+		fw.runScript(fw.appJsCommandsDir + "/trace.js");
 
-	function myBuggyFunc(count)
-	{
-		return trace();
-		
-		var dom = fw.getDocumentDOM();
-		dom.selectAll();
-		dom.deleteSelection();
-		
-		for (var i = 0; i < count; i++) {
-			dom.clipPaste();
-			dom.moveSelectionTo({ x: i * 10, y: i * 10 });
+	Then add `return trace();` to the functions whose execution you want to trace:
+
+		function myBuggyFunc(count)
+		{
+			return trace();
+
+			var dom = fw.getDocumentDOM();
+			dom.selectAll();
+			dom.deleteSelection();
+
+			for (var i = 0; i < count; i++) {
+				dom.clipPaste();
+				dom.moveSelectionTo({ x: i * 10, y: i * 10 });
+			}
 		}
-	}
 
-	myBuggyFunc();
+		myBuggyFunc();
 
-	watch variables 
-	pass in a name for the function
-	if you see an if statement logged, means that branch was entered
-	don't pass in the dom
+	See the readme for more information about the parameters that can be
+	passed to trace().
+
 	
 	To do:
 		- maybe have an option to wrap everything in a try/catch and only log
 			on exceptions
-			return 'try {' + inWholeLine + '} catch (e) { log("' + functionName + 'ERROR: ' + inStatement + '"); throw(e); }\n' + logCall;
+			return 'try {' + inWholeLine + '} catch (e) { log("' + functionName + 
+				'ERROR: ' + inStatement + '"); throw(e); }\n' + logCall;
 			problem is, we'd have to understand the block structure of the code
 			to not wrap try/catch around just the opening of a for loop, say
 
@@ -79,7 +86,7 @@
 
 try { (function() {
 	if (typeof log != "function") {
-		alert("Before using the trace() library, the Fireworks Console extension must be installed.  It can be downloaded from here:\n\n" + 
+		alert("Before trace() can be called, the Fireworks Console extension must be installed and the panel must be open.  The extension can be downloaded from here:\n\n" + 
 			"http://johndunning.com/fireworks/about/FWConsole");
 		return;
 	}
@@ -295,6 +302,9 @@ try { (function() {
 			return [(param + ":").quote(), param];
 		}));
 		
+			// add the log calls for the watched variables to the end of the
+			// param log call, so that the current state of the watched vars is
+			// shown as soon as the function is entered
 		paramLog.push(")".quote());
 		paramLog = 'log(' + paramLog.join(", ") + ');\n' + watchedVars;
 
