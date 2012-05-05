@@ -1,20 +1,19 @@
 /* ===========================================================================
 	
-	File: trace
+	trace.js
 
-	Author - John Dunning
-	Copyright - 2012 John Dunning.  All rights reserved.
-	Email - fw@johndunning.com
-	Website - http://johndunning.com/fireworks
+	Copyright 2012 John Dunning.  
+	fw@johndunning.com
+	http://johndunning.com/fireworks
 
-	Release - 0.1.0 ($Revision: 1.5 $)
-	Last update - $Date: 2010/10/24 02:41:36 $
+	trace.js is released under the MIT license.
 
    ======================================================================== */
 
 
 /*
-	To use:
+	First, install trace.js in a known location, like in the 
+	Fireworks/Configuration/Commands folder. 
 	
 	fw.runScript(fw.appJsCommandsDir + "/trace.js");
 
@@ -40,27 +39,33 @@
 	don't pass in the dom
 	
 	To do:
-		- make sure returning a function from a function and then tracing the
-			returned one has the right scope 
-
 		- maybe have an option to wrap everything in a try/catch and only log
 			on exceptions
 			return 'try {' + inWholeLine + '} catch (e) { log("' + functionName + 'ERROR: ' + inStatement + '"); throw(e); }\n' + logCall;
 			problem is, we'd have to understand the block structure of the code
 			to not wrap try/catch around just the opening of a for loop, say
 
+		- try tracing a recursive function
+
 		- maybe use watch() to track the watched variables and log only when
 			they change
 
+		- should probably pass log in as a parameter to the module 
+			would also need a string to supply the name for the function 
+			or possibly store a reference to it, then add it to the scope facade
+
 		- make it work with module calls
-			toString sometimes puts all the statements on one line, so the
-			regex doesn't match anything 
+			function.toString sometimes puts all the statements on one line, 
+			so the regex doesn't match anything 
 		
 		- put watched vars on one line? 
 			gets tricky when you have tests and don't want to show anything
 			if the test doesn't match 
 
 	Done:
+		- make sure returning a function from a function and then tracing the
+			returned one has the right scope 
+
 		- escape quotation marks 
 
 		- put logs after if and for/while loops
@@ -133,17 +138,16 @@ try { (function() {
 
 
 	// =======================================================================
-	function Facade()
-	{
-		// this is an empty class that we use just to check whether a scope
-		// that's encountered in getScopeFacade is actually a Facade
-	}
-	
-
-	// =======================================================================
 	function getScopeFacade(
 		inCaller)
 	{
+		function Facade()
+		{
+			// this is an empty class that we use just to check whether a scope
+			// we encounter is actually a Facade
+		}
+
+
 		function createGetter(
 			inName,
 			inScope)
@@ -195,13 +199,13 @@ try { (function() {
 					// we'd get in an endless loop, so flee!  
 				return inFacade;
 			} else if (inCaller.caller) {
-					// add the variables from our caller's scope first, in case
-					// we shadow some vars that are also defined in the caller
-					// scope
+					// add the variables from the caller's caller's scope first, 
+					// in case we shadow some vars that are also defined in the 
+					// parent scope
 				inFacade = arguments.callee(inCaller.caller, inFacade);
 			}
 			
-				// add our scope to the facade
+				// add the caller's scope to the facade
 			addScope(callerScope, inFacade);
 			
 			return inFacade;
@@ -251,46 +255,28 @@ try { (function() {
 
 
 			// adjust the optional parameters 
-		if (typeof inWatched == "function") {
-			inFunctionName = "";
-			inWatched = [];
-		}
-
 		if (typeof inWatched == "string") {
 			inFunctionName = inWatched;
 			inWatched = [];
-		}
-
-		if (typeof inFunctionName == "function") {
-			inFunctionName = "";
 		}
 
 				// we can't call this "caller", because that creates a property
 				// called "caller" on our function object, which then overwrites
 				// the arguments.callee.caller property.  ffs.
 		var callerFunc = arguments.callee.caller,
-			callerCode = arguments.callee.caller.toString(),
-				// pull out the body and params of the function
-			codeMatch = callerCode.match(/function\s+([^(]+)?\(([^)]*)\)\s*\{([\s\S]*)\}/),
-			body = codeMatch[3],
-			params = codeMatch[2] ? codeMatch[2].split(/\s*,\s*/) : [],
+			callerSource = arguments.callee.caller.toString(),
 				// ignore the calling function's name if one was passed in
 			functionName = inFunctionName || callerFunc.name,
+				// pull out the body and params of the function
+			codeMatch = callerSource.match(/function\s+([^(]+)?\(([^)]*)\)\s*\{([\s\S]*)\}/),
+			params = codeMatch[2] ? codeMatch[2].split(/\s*,\s*/) : [],
+			body = codeMatch[3],
 			paramLog,
 			watchedVars = "",
-			wrapper;
+			traceMatch;
 			
 			// add a colon after the function name, if there is one
 		functionName = functionName ? functionName + ": " : "";
-
-			// create a log statement to display the function's parameters.
-			// include the function name as the first string in the log call.
-		paramLog = [functionName.slice(0, -1).quote(), "(".quote()].concat(map(params, function(param) {
-			return [(param + ":").quote(), param];
-		}));
-		
-		paramLog.push(")".quote());
-		paramLog = 'log(' + paramLog.join(", ") + ');\n';
 		
 		if (inWatched) {
 			watchedVars = map(inWatched, function(watched) {
@@ -302,12 +288,32 @@ try { (function() {
 			});
 			watchedVars = watchedVars.join("\n") + "\n";
 		}
-		
-// look for return trace and take the body after that call
-// so could have some statements that aren't traced before trace()
-// show an alert if trace can't be found, as the caller must be calling us through some other reference 
 
-		body = body.replace(/(return\s+)?trace\(\s*\)\s*;/g, "");
+			// create a log statement to display the function's parameters.
+			// include the function name as the first string in the log call.
+		paramLog = [(functionName + "(").quote()].concat(map(params, function(param) {
+			return [(param + ":").quote(), param];
+		}));
+		
+		paramLog.push(")".quote());
+		paramLog = 'log(' + paramLog.join(", ") + ');\n' + watchedVars;
+
+		traceMatch = body.match(/return\s+trace\s*\([^)]*\)\s*;/);
+		
+		if (!traceMatch) {
+				// the caller must have set a var to trace and then called us 
+				// through that var.  but we can't trace if we can't find the
+				// trace call and strip it out.
+			alert('A "return trace();" statement could not be found in the calling function. The trace function must be called directly, not through a reference.');
+			return;
+		}
+		
+			// start tracing from the statement after the trace() call, and 
+			// remove any other calls to trace that happen to be in the function.
+			// also, the array returned by match() doesn't have a lastIndex
+			// property on it.  ffs.
+		body = body.slice(traceMatch.index + traceMatch[0].length);
+		body = body.replace(/return\s+trace\s*\([^)]*\)\s*;/g, "");
 
 			// add a log call after each ;\n to display the previous statement
 		body = body.replace(/^\s*([^\n]+;)\s*\n/mg, 
@@ -329,15 +335,16 @@ try { (function() {
 			// wrap the body in an anonymous function so our caller can execute
 			// it in the caller's scope.  then capture that function's return
 			// value, log it, and return it from another anonymous function.
-		wrapper = '(function(){ var returnValue = (function(){' + 
+		body = '(function(){ var returnValue = (function(){' + 
 			paramLog + body + 
 			'})(); log("' + functionName + 'return", returnValue); return returnValue; })();';
 
 			// create a facade object that maps all of the identifiers in the
-			// scope chain for our caller to the owning scope, and then eval the 
-			// code within that fake scope
+			// our caller's scope chain to the owning scope, and then eval the 
+			// caller's code within that fake scope.  this is where all the 
+			// magic happens.
 		with (getScopeFacade(callerFunc)) {
-			return eval(wrapper);
+			return eval(body);
 		}
 	}
 })(); } catch (exception) {
