@@ -1,9 +1,4 @@
-Problem: Fireworks doesn’t provide a JavaScript debugger, so finding the source of an error requires sprinkling your code with alert() calls.
-
-Solution: Use a trace library to automatically instrument each line of your code.
-
-
-Writing extensions for Fireworks is fun when everything works, but can be extremely painful when it doesn’t.  Unlike modern browsers, the JavaScript engine in Fireworks does not include a debugger.  So when an error occurs, Fireworks just displays a dialog saying “An error occurred”, with no information about what the error is or where it might be.  Thanks!
+Writing extensions for Adobe Fireworks is fun when everything works, but can be extremely painful when it doesn’t.  Unlike modern browsers, the JavaScript engine in Fireworks does not include a debugger.  So when an error occurs, Fireworks just displays a dialog saying “An error occurred”, with no information about what the error is or where it might be.  Thanks!
 
 One of my [Fireworks Cookbook articles](http://cookbooks.adobe.com/post_Enable_better_error_handling_for_Fireworks_command-16400.html) explains how to get better error reporting when you have exceptions caused by buggy JavaScript.  If your code is doing something like accessing an undeclared variable or trying to call a function that doesn’t exist, the exception thrown by the JS engine includes the path to the .jsf file containing the error and the line on which it occurred.  This information makes it a lot easier to find the bug.
 
