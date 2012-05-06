@@ -1,23 +1,29 @@
+Problem: Fireworks doesn’t provide a JavaScript debugger, so finding the source of an error requires sprinkling your code with alert() calls.
+
+Solution: Use a trace library to automatically instrument each line of your code.
+
+
 Writing extensions for Fireworks is fun when everything works, but can be extremely painful when it doesn’t.  Unlike modern browsers, the JavaScript engine in Fireworks does not include a debugger.  So when an error occurs, Fireworks just displays a dialog saying “An error occurred”, with no information about what the error is or where it might be.  Thanks!
 
-Another of my [Fireworks Cookbook articles](http://cookbooks.adobe.com/post_Enable_better_error_handling_for_Fireworks_command-16400.html) explains how to get better error reporting when you have exceptions caused by buggy JavaScript.  If your code is doing something like accessing an undeclared variable or trying to call a function that doesn’t exist, the exception thrown by the JS engine includes the path to the .jsf file containing the error and the line on which it occurred.  This information makes it a lot easier to find the bug.
+One of my [Fireworks Cookbook articles](http://cookbooks.adobe.com/post_Enable_better_error_handling_for_Fireworks_command-16400.html) explains how to get better error reporting when you have exceptions caused by buggy JavaScript.  If your code is doing something like accessing an undeclared variable or trying to call a function that doesn’t exist, the exception thrown by the JS engine includes the path to the .jsf file containing the error and the line on which it occurred.  This information makes it a lot easier to find the bug.
 
 But what if the problem is with how you’re using the Fireworks API itself?  Fireworks may tell you that “A parameter was incorrect”, but it doesn’t give you get the line number containing the incorrect parameter.  So you have to stick `alert()` calls at multiple points in your code to see how far your script gets.  If you have a lot of code (some of my extensions have a few thousand lines), this can be seriously tedious.  Using my [Fireworks Console](http://johndunning.com/fireworks/about/FWConsole) extension helps somewhat, since you can see messages getting dumped to the console instead of dismissing dozens of alerts.  But inserting all the log calls (and removing them when you’re done) is still a real pain.
 
 The `trace()` library makes this whole process much easier.  
 
 
-## Installing trace
+## Installing the trace library
 
-You can download the `trace.js` file from here: 
+You can download the `trace.js` file from the [trace](https://github.com/fwextensions/trace) repo on github. 
 
-You will also need to download and install my Fireworks Console: <http://johndunning.com/fireworks/about/FWConsole>  
+You will also need to download and install my [Fireworks Console](http://johndunning.com/fireworks/about/FWConsole) extension.  The console panel must be open while a function is being traced, since it provides a global `log()` function that `trace()` uses to display strings in the console. 
 
-The console provides a global `log()` function, which `trace()` uses to display strings in the console. 
+You can install the `trace.js` file anywhere, but putting it at the top level of the Fireworks Commands directory is probably simplest: `C:\Program Files (x86)\Adobe\Adobe Fireworks CS5.1\Configuration\Commands` on Windows, or `/Applications/Adobe Fireworks CS5.1/Configuration/Commands` on OSX.
 
-You can install the trace.js file anywhere, but putting it at the top level of the Fireworks Commands directory is probably simplest: `C:\Program Files (x86)\Adobe\Adobe Fireworks CS5.1\Configuration\Commands`
 
-Now imagine you’ve written the following (not very useful) script:
+## Using trace
+
+Imagine you’ve written the following (not very useful) script:
 
 	function myBuggyFunc(count)
 	{
@@ -61,7 +67,7 @@ Then add `return trace();` at the top of the function you want to trace.  In our
 
 	myBuggyFunc();
 
-I’ll explain how that line works later, but for now, just try running your script.  You should see the following lines in the console:
+I’ll explain how that line works later, but for now, just try running your script.  You should see the following lines in the Fireworks Console panel:
 
 	>>> myBuggyFunc: ( count: undefined )
 	>>> myBuggyFunc: var dom = fw.getDocumentDOM();
@@ -289,7 +295,7 @@ Accomplishing this took some spelunking into the source code for the Fireworks J
 
 (In fact, an earlier version required that the body of the function to be traced was wrapped in an anonymous function, which was passed to `trace()`, which then returned the string of code, which the calling function then had to pass to `eval()`.  It required adding `return eval(trace(function() { ... }));` to your function, which was pretty ugly.)
 
-To calculate the correct context in which to evaluate your function’s code, `trace()` follows the call chain back until it finds the start of the script.  Then, it walks back down the chain, examining each function call’s __parent__ context.  It adds every property in that context to a single “façade” object that represents your function’s context.  But it can’t simply copy the value to the façade.  Consider this code:
+To calculate the correct context in which to evaluate your function’s code, `trace()` follows the call chain back until it finds the start of the script.  Then, it walks back down the chain, examining each function call’s `__parent__` context.  It adds every property in that context to a single “façade” object that represents your function’s context.  But it can’t simply copy the value to the façade.  Consider this code:
 
 	(function() {
 		var foo = 0;
@@ -311,7 +317,7 @@ To get around this, a getter and setter are created for each property on the faç
 
 When the scope of the function that’s being traced is reached, that function’s `__call__` property is also added to the façade.  The `__call__` object contains all of the local variables and parameters of a particular function call, so it’s obviously a key part of the context needed to correctly evaluate your code.
 
-(As an aside, it’s sort of mind-blogging that the `__call__` object is actually mutable.  Consider this code:
+(As an aside, it’s sort of mind-blogging that the `__call__` object is mutable.  Consider this code:
 
 	(function() {
 		function foo()
@@ -330,7 +336,7 @@ When the scope of the function that’s being traced is reached, that function’s `
 
 Wheeeeee!)
 
-Once the façade object contains the full context of the function that’s being traced, it’s used in a `with` block that consists of a call to `eval()`, which is what executes the code:
+Once the façade object contains the full context of the function that’s being traced, it’s used in a `with` block that consists of a call to `eval()`, which is what actually executes the code:
 
 	with (getScopeFacade(callerFunc)) {
 		return eval(body);
@@ -350,3 +356,4 @@ So, to review, the nasty bits of JavaScript that make `trace()` possible include
 While there are many disadvantages to Macromedia and Adobe having seemingly never updated the Fireworks JS engine since 1998, one advantage is that even though Mozilla has removed `__parent__` and `__call__` from later versions of [SpiderMonkey](https://developer.mozilla.org/en/JavaScript/Reference/Deprecated_and_obsolete_features), they live on in Fireworks, which makes the lack of a proper debugger a little more bearable.   
 
 Anyway, I hope you’ve found this investigation into the nether regions of JavaScript enlightening, and that `trace()` saves you some head-scratching when debugging your Fireworks extensions.
+
