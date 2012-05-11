@@ -9,11 +9,7 @@ The `trace()` library makes this whole process much easier.
 
 ## Installing the trace library
 
-You can download the `trace.js` file from the [trace](https://github.com/fwextensions/trace) repo on github. 
-
-You will also need to download and install my [Fireworks Console](http://johndunning.com/fireworks/about/FWConsole) extension.  The console panel must be open while a function is being traced, since it provides a global `log()` function that `trace()` uses to display strings in the console. 
-
-You can install the `trace.js` file anywhere, but putting it at the top level of the Fireworks Commands directory is probably simplest: `C:\Program Files (x86)\Adobe\Adobe Fireworks CS5.1\Configuration\Commands` on Windows, or `/Applications/Adobe Fireworks CS5.1/Configuration/Commands` on OSX.
+To use the trace library, you will need to download and install my [Fireworks Console](http://johndunning.com/fireworks/about/FWConsole) extension.  The console panel must be open while a function is being traced, since it loads a `console` object and the `trace()` function into the global namespace.  `trace()` calls `log()` to display strings in the console panel.  
 
 
 ## Using trace
@@ -278,7 +274,7 @@ Let’s take a look at that `return trace();` line we added to the function to ena
 
 To get access to your function’s code, the trace function uses the little-known `arguments.callee.caller` property.  This refers to the current function’s caller.  Calling `.toString()` on this reference turns it back into source code.  Unfortunately, the translation in the Fireworks JS engine isn’t isomorphic with the original source.  Comments are removed, semicolons and braces are added, whitespace is sometimes stripped, and quoted property names are broken, as described above.  So there’s no way to map the traced lines directly back to the ones in your source code.  
 
-Once it has the source string, `trace()` uses a pretty simple-minded regular expression to find lines that end in a semicolon and a newline.  The assumption is that it’s safe to insert a logging call after that newline.  Obviously, that’s not always true.  For instance, if you format a for loop with a newline after any of the semicolons in the loop header, then `trace()` will break your code.  It seems to work well enough most of the time, but feel free to fork the library on github and make improvements.  (A more rigorous solution would be to parse the code into a tree, walk the tree to insert log calls at the appropriate locations, then turn the abstract syntax tree back into code.  I might try tackling that at some point, but for now, regexes seemed better than nothing.)
+Once it has the source string, `trace()` uses a pretty simple-minded regular expression to find lines that end in a semicolon and a newline.  The assumption is that it’s safe to insert a logging call after that newline.  Obviously, that’s not always true.  For instance, if you format a for loop with a newline after any of the semicolons in the loop header, then `trace()` will break your code.  It seems to work well enough most of the time, but feel free to fork the library on [github](https://github.com/fwextensions/trace) and make improvements.  (A more rigorous solution would be to parse the code into a tree, walk the tree to insert log calls at the appropriate locations, then turn the abstract syntax tree back into code.  I might try tackling that at some point, but for now, regexes seemed better than nothing.)
 
 `trace()` also looks for the opening braces of if and loop statements, and then inserts a log call after the brace.  This lets you see when the execution enters one of those blocks. 
 
@@ -352,13 +348,3 @@ While there are many disadvantages to Macromedia and Adobe having seemingly neve
 
 Anyway, I hope you’ve found this investigation into the nether regions of JavaScript enlightening, and that `trace()` saves you some head-scratching when debugging your Fireworks extensions.
 
-
-## License
-
-Copyright (c) 2012 John Dunning
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

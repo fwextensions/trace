@@ -6,7 +6,8 @@
 	fw@johndunning.com
 	http://johndunning.com/fireworks
 
-	trace.js is released under the MIT license.
+	trace.js is released under the MIT license.  See the LICENSE file 
+	for details.
 
    ======================================================================== */
 
@@ -52,8 +53,15 @@
 			problem is, we'd have to understand the block structure of the code
 			to not wrap try/catch around just the opening of a for loop, say
 
+		- show stack trace when function is entered
+
+		- treat watch expressions as assertions, show only when false
+
 		- maybe use watch() to track the watched variables and log only when
 			they change
+			would calling watch() on the facade object work?
+
+		- dump the call stack when entering the function being traced
 
 		- should probably pass log in as a parameter to the module 
 			would also need a string to supply the name for the function 
