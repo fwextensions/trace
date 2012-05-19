@@ -16,18 +16,12 @@
 	First, install the Fireworks Console extension from here:
 	http://johndunning.com/fireworks/about/FWConsole
 
-	Then restart Fireworks and open the console panel.
-
-	Install trace.js in a known location, like in the Fireworks/Configuration/Commands 
-	folder.  In your script, call runScript to load the trace command:
-	
-		fw.runScript(fw.appJsCommandsDir + "/trace.js");
-
-	Then add `return trace();` to the functions whose execution you want to trace:
+	Then restart Fireworks and open the console panel.  Add `return trace(this);` 
+	to the functions whose execution you want to trace:
 
 		function myBuggyFunc(count)
 		{
-			return trace();
+			return trace(this);
 
 			var dom = fw.getDocumentDOM();
 			dom.selectAll();
@@ -46,6 +40,15 @@
 
 	
 	To do:
+		- add try/catch around eval and alert the error?
+
+		- arguments.callee doesn't work, as it's pointing at the anonymous
+			function in the eval, not the original caller
+			also wouldn't work to set a property on callee, or to recurse
+
+		- make sure nested calls and calls to a function from one scope that
+			calls a function in another work
+
 		- maybe have an option to wrap everything in a try/catch and only log
 			on exceptions
 			return 'try {' + inWholeLine + '} catch (e) { log("' + functionName + 
@@ -76,6 +79,22 @@
 			if the test doesn't match 
 
 	Done:
+		- a property on a function shadows a var in the parent scope of the same name
+			that's because we were calling walkScopeChain starting from the 
+				calling function itself, which added the properties on the 
+				function to the facade
+			need to start from caller.__parent__
+
+		- accessing the arguments var doesn't work
+
+		- show the whitespace of the statements in the log calls?
+			could make the code look more like the original function
+
+		- handle this correctly
+			may have to pass it to trace
+			return trace(this);
+			may need to pass this into anonymous functions in the eval
+
 		- try tracing a recursive function
 
 		- make sure returning a function from a function and then tracing the
@@ -98,7 +117,7 @@ try { (function() {
 			"http://johndunning.com/fireworks/about/FWConsole");
 		return;
 	}
-	
+
 	
 	// =======================================================================
 	function forEach(obj, iterator, context) {
@@ -111,9 +130,7 @@ try { (function() {
 			}
 		} else {
 			for (var key in obj) {
-				if (hasOwnProperty.call(obj, key)) {
-					if (iterator.call(context, obj[key], key, obj) === false) { return; }
-				}
+				if (iterator.call(context, obj[key], key, obj) === false) { return; }
 			}
 		}
 	}
@@ -198,30 +215,38 @@ try { (function() {
 			for (var name in inScope) {
 				inFacade.__defineGetter__(name, createGetter(name, inScope));
 				inFacade.__defineSetter__(name, createSetter(name, inScope));
+				
+					// this crazy syntax is valid in the FW JS engine, though it
+					// was removed from later versions of the Mozilla engine.
+					// it seems to be the only way to make the g/setters
+					// enumerable, which is sometimes useful for debugging.  but
+					// since this looks like a syntax error to NetBeans, leave
+					// it commented out when not needed. 
+//				inFacade[name] getter = createGetter(name, inScope);
+//				inFacade[name] setter = createSetter(name, inScope);
 			}
 		}
 
 
-		function walkCallerChain(
-			inCaller,
+		function walkScopeChain(
+			inScope,
 			inFacade)
 		{
-			var callerScope = inCaller.__parent__;
-			
-			if (callerScope instanceof Facade) {
+			if (inScope instanceof Facade) {
 					// we've hit a scope that was created by an earlier call to
 					// trace().  if we tried to add that scope to our facade,
 					// we'd get in an endless loop, so flee!  
 				return inFacade;
-			} else if (inCaller.caller) {
-					// add the variables from the caller's caller's scope first, 
-					// in case we shadow some vars that are also defined in the 
-					// parent scope
-				inFacade = arguments.callee(inCaller.caller, inFacade);
+			} else if (inScope.__parent__ && inScope.__parent__.__parent__) {
+					// add the variables from the scope's parent scope first, 
+					// in case the scope shadows some vars that are also defined 
+					// in the parent scope, but only if the parent isn't the
+					// global scope, which should always be accessible
+				inFacade = arguments.callee(inScope.__parent__, inFacade);
 			}
-			
-				// add the caller's scope to the facade
-			addScope(callerScope, inFacade);
+
+				// add this scope to the facade
+			addScope(inScope, inFacade);
 			
 			return inFacade;
 		}
@@ -233,41 +258,45 @@ try { (function() {
 			// traced, we won't get into an infinite loop.  
 		var facade = new Facade();
 
-			// first add all the parent scopes from our call chain
-		walkCallerChain(inCaller, facade);
-		
-			// then add the local variables from our call, so that they can 
-			// shadow ones in the parent scope, if needed
+			// first add all the parent scopes from the caller's scope chain
+		walkScopeChain(inCaller.__parent__, facade);
+
+			// then add the local variables from the caller, so that they can 
+			// shadow ones in the parent scopes, if needed
 		addScope(inCaller.__call__, facade);
-			
+
 		return facade; 
 	}
 
 		
 	// =======================================================================
 	trace = function(
+		__CALLER_THIS__,
 		inWatched,
 		inFunctionName)
 	{
 		function logStatement(
 			inWholeLine,
+			inWhitespace,
 			inStatement)
 		{
-				// display the function name and statement in the console
-			var logCall = 'log(' + (functionName + inStatement).quote() + ');\n' + 
-				watchedVars;
+				// convert tabs to 2 spaces and get rid of newlines
+			inWhitespace = (inWhitespace || "").replace(/\n/g, "").replace(/\t/g, "  ");
 			
-			if (/^(return|continue|break)[\s;]/.test(inStatement)) {
-					// since putting a log call after return, continue or break 
-					// is pointless, put it before the statement
-				return logCall + inWholeLine;
-			} else {
-					// put the log call after the statement, so that it won't
-					// be logged if the statement throws an exception
-				return inWholeLine + logCall;
-			}
-		}
+				// display the function name and statement in the console
+			var logCall = 'log(' + (functionName + inWhitespace + inStatement).quote() + ');\n' + 
+				watchedVars;
 
+				// put the log call before the statement, so that we can see a
+				// function call before the code steps into the function.  doing 
+				// this would normally break a block of var definitions separated 
+				// by commas and a new line, since the regexp would match the
+				// last line in the block and stick the log call before it, which
+				// breaks the syntax.  but toString on a function puts all var
+				// definitions on a single line, as well as a mutli-line object
+				// definition, like var foo = { bar: 42 }.
+			return logCall + inWholeLine;
+		}
 
 			// adjust the optional parameters 
 		if (typeof inWatched == "string") {
@@ -279,6 +308,7 @@ try { (function() {
 				// called "caller" on our function object, which then overwrites
 				// the arguments.callee.caller property.  ffs.
 		var callerFunc = arguments.callee.caller,
+			__CALLER_ARGS__ = callerFunc.arguments,			
 			callerSource = arguments.callee.caller.toString(),
 				// ignore the calling function's name if one was passed in
 			functionName = inFunctionName || callerFunc.name,
@@ -292,7 +322,7 @@ try { (function() {
 			
 			// add a colon after the function name, if there is one
 		functionName = functionName ? functionName + ": " : "";
-		
+
 		if (inWatched) {
 			watchedVars = map(inWatched, function(watched) {
 					// argh, there's some global native function called "watch"?
@@ -317,7 +347,7 @@ try { (function() {
 		paramLog = 'log(' + paramLog.join(", ") + ');\n' + watchedVars;
 
 		traceMatch = body.match(/return\s+trace\s*\([^)]*\)\s*;/);
-		
+
 		if (!traceMatch) {
 				// the caller must have set a var to trace and then called us 
 				// through that var.  but we can't trace if we can't find the
@@ -333,8 +363,8 @@ try { (function() {
 		body = body.slice(traceMatch.index + traceMatch[0].length);
 		body = body.replace(/return\s+trace\s*\([^)]*\)\s*;/g, "");
 
-			// add a log call after each ;\n to display the previous statement
-		body = body.replace(/^\s*([^\n]+;)\s*\n/mg, 
+			// add a log call before each ;\n to display the statement
+		body = body.replace(/^(\s*)([^\n]+;)\s*\n/mg, 
 			logStatement);
 
 			// add a log call after the opening brace of an if/for/while block.
@@ -342,27 +372,43 @@ try { (function() {
 			// sticking log calls in the middle of another log call, which can
 			// happen with a nested function definition.  FW returns the body of
 			// the nested function all on one line when doing toString, so the
-			// replace call above will log the whole line.  but then this if
+			// replace call above will log the whole line.  but then this `if`
 			// replace will see if statements inside the log string and replace
 			// them, breaking the code.  requiring a space before the keyword
 			// won't match in the nested function case, since FW removes all 
 			// the whitespace from the function body.
-		body = body.replace(/\s((?:if|for|while)\s*\([^{]+\)\s*\{)/g, 
+		body = body.replace(/^(\s*)((?:if|for|while)\s*\([^{]+\)\s*\{)/mg, 
 			logStatement);
-			
+
 			// wrap the body in an anonymous function so our caller can execute
-			// it in the caller's scope.  then capture that function's return
-			// value, log it, and return it from another anonymous function.
+			// it in the caller's scope, and apply it to the caller's this value 
+			// and arguments.  we have to pass the caller's this and arguments 
+			// into the function so that if code in the caller does something 
+			// like `arguments.length`, it'll have the appropriate value.  then 
+			// capture that function's return value, log it, and return it from 
+			// another anonymous function.  we use slightly obscure var names for 
+			// this and args so that hopefully, the caller doesn't have anything
+			// with the same names in its scope. 
 		body = '(function(){ var returnValue = (function(){' + 
 			paramLog + body + 
-			'})(); log("' + functionName + 'return", returnValue); return returnValue; })();';
+			'}).apply(__CALLER_THIS__, __CALLER_ARGS__); log("' + functionName + 'return", returnValue); return returnValue; })();';
 
 			// create a facade object that maps all of the identifiers in the
 			// our caller's scope chain to the owning scope, and then eval the 
 			// caller's code within that fake scope.  this is where all the 
 			// magic happens.
 		with (getScopeFacade(callerFunc)) {
-			return eval(body);
+			try {
+				return eval(body);
+			} catch (exception) { 
+				if (exception.lineNumber) {
+					alert([exception, exception.lineNumber, exception.fileName].join("\n"));
+				} else {
+						// this is an internal error with a useless error number,
+						// so throw it to let FW handle it and show a better message
+					throw exception;
+				}
+			}
 		}
 	}
 })(); } catch (exception) {
