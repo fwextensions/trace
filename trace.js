@@ -42,8 +42,6 @@
 	To do:
 		- add try/catch around eval and alert the error?
 
-		- make sure recursing via arguments.callee works 
-
 		- should probably pass log in as a parameter to the module 
 			would also need a string to supply the name for the function 
 			or possibly store a reference to it, then add it to the scope facade
@@ -74,6 +72,8 @@
 			if the test doesn't match 
 
 	Done:
+		- make sure recursing via arguments.callee works 
+
 		- arguments.callee doesn't work, as it's pointing at the anonymous
 			function in the eval, not the original caller
 			also wouldn't work to set a property on callee, or to recurse
@@ -184,11 +184,8 @@ try { (function() {
 			inName,
 			inScope)
 		{
-			return function()
-			{
-					// get the value from the scope that contains this variable 
-				return inScope[inName];
-			}
+				// get the value from the scope that contains this variable 
+			return function() { return inScope[inName]; }
 		}
 		
 		
@@ -196,12 +193,8 @@ try { (function() {
 			inName,
 			inScope)
 		{
-			return function(
-				inValue)
-			{
-					// set the value on the scope that contains this variable 
-				inScope[inName] = inValue;
-			}
+				// set the value on the scope that contains this variable 
+			return function(inValue) { inScope[inName] = inValue; }
 		}
 
 
@@ -241,7 +234,8 @@ try { (function() {
 					// add the variables from the scope's parent scope first, 
 					// in case the scope shadows some vars that are also defined 
 					// in the parent scope, but only if the parent isn't the
-					// global scope, which should always be accessible
+					// global scope.  that should always be accessible and so
+					// doesn't need to be on the facade.
 				inFacade = arguments.callee(inScope.__parent__, inFacade);
 			}
 
@@ -275,6 +269,8 @@ try { (function() {
 		inWatched,
 		inFunctionName)
 	{
+			// this function is local to trace just so it can access the name
+			// of the function being traced
 		function logStatement(
 			inWholeLine,
 			inWhitespace,
@@ -286,17 +282,32 @@ try { (function() {
 				// display the function name and statement in the console
 			var logCall = 'log(' + (functionName + inWhitespace + inStatement).quote() + ');\n';
 
-				// put the log call before the statement, so that we can see a
-				// function call before the code steps into the function.  doing 
-				// this would normally break a block of var definitions separated 
-				// by commas and a new line, since the regexp would match the
-				// last line in the block and stick the log call before it, which
-				// breaks the syntax.  but toString on a function puts all var
-				// definitions on a single line, as well as a mutli-line object
-				// definitions, like var foo = { bar: 42 }.  we want to add the
-				// watchedVars after the statement, so that it shows the value
-				// of the watched vars after the statement is executed.
-			return logCall + inWholeLine + watchedVars;
+			if (/^(return|continue|break)[\s;]/.test(inStatement)) {
+					// since putting a log call after return, continue or break 
+					// is pointless, put it before the statement.  we don't need
+					// to match the whole statement, just verify that it's a 
+					// token followed by a space or ;.  toString always puts a
+					// space after a return, even if the source looks like
+					// return(foo);
+				return logCall + watchedVars + inWholeLine;
+			} else if (/^(for|while)\s*\(/.test(inStatement) || /^do\s+\{/.test(inStatement)) {
+					// we want to put the log call and watched vars after the
+					// looping statement so that we see them each time through
+					// the loop
+				return inWholeLine + logCall + watchedVars;
+			} else {
+					// put the log call before the statement, so that we can see a
+					// function call before the code steps into the function.  doing 
+					// this would normally break a block of var definitions separated 
+					// by commas and a new line, since the regexp would match the
+					// last line in the block and stick the log call before it, which
+					// breaks the syntax.  but toString on a function puts all var
+					// definitions on a single line, as well as a mutli-line object
+					// definitions, like var foo = { bar: 42 }.  we want to add the
+					// watchedVars after the statement, so that it shows the value
+					// of the watched vars after the statement is executed.
+				return logCall + inWholeLine + watchedVars;
+			}
 		}
 
 			// adjust the optional parameters 
@@ -364,11 +375,9 @@ try { (function() {
 		body = body.slice(traceMatch.index + traceMatch[0].length);
 		body = body.replace(/return\s+trace\s*\([^)]*\)\s*;/g, "");
 
-			// add a log call before each ;\n to display the statement
-		body = body.replace(/^(\s*)([^\n]+;)\s*\n/mg, 
-			logStatement);
-
-			// add a log call after the opening brace of an if/for/while block.
+			// this monster regex will:
+			// 
+			// - add a log call after the opening brace of an if/for/while block.
 			// but do so only if there's a space in front of the if, to avoid
 			// sticking log calls in the middle of another log call, which can
 			// happen with a nested function definition.  FW returns the body of
@@ -378,13 +387,17 @@ try { (function() {
 			// them, breaking the code.  requiring a space before the keyword
 			// won't match in the nested function case, since FW removes all 
 			// the whitespace from the function body.
-		body = body.replace(/^(\s*)((?:if|for|while)\s*\([^{]+\)\s*\{)/mg, 
+			// 
+			// - add a log call before each ;\n to display the statement
+			// 
+			// - add a log call after each do statement
+		body = body.replace(/^(\s*)((?:(?:if|for|while)\s+\([^{]+\)\s*\{)|(?:[^\n]+;)|(?:do\s+\{))\s*$/mg, 
 			logStatement);
 
 			// override the arguments var with the caller's arguments so that
 			// things like arguments.callee correctly point to the caller.  we
 			// do this at the very beginning of the function, but after all the
-			// statements have been logged, so that this doesn't get logged.
+			// statements have been logged, so that this doesn't get logged, too.
 		body = 'arguments = __CALLER_ARGS__;\n' + body;
 
 			// wrap the body in an anonymous function so our caller can execute
