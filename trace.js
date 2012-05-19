@@ -42,12 +42,21 @@
 	To do:
 		- add try/catch around eval and alert the error?
 
-		- arguments.callee doesn't work, as it's pointing at the anonymous
-			function in the eval, not the original caller
-			also wouldn't work to set a property on callee, or to recurse
+		- make sure recursing via arguments.callee works 
+
+		- should probably pass log in as a parameter to the module 
+			would also need a string to supply the name for the function 
+			or possibly store a reference to it, then add it to the scope facade
+			if a function has a local log var, this will break
 
 		- make sure nested calls and calls to a function from one scope that
 			calls a function in another work
+
+		- dump the call stack when entering the function being traced?
+
+		- maybe use watch() to track the watched variables and log only when
+			they change
+			would calling watch() on the facade object work?
 
 		- maybe have an option to wrap everything in a try/catch and only log
 			on exceptions
@@ -55,20 +64,6 @@
 				'ERROR: ' + inStatement + '"); throw(e); }\n' + logCall;
 			problem is, we'd have to understand the block structure of the code
 			to not wrap try/catch around just the opening of a for loop, say
-
-		- show stack trace when function is entered
-
-		- treat watch expressions as assertions, show only when false
-
-		- maybe use watch() to track the watched variables and log only when
-			they change
-			would calling watch() on the facade object work?
-
-		- dump the call stack when entering the function being traced
-
-		- should probably pass log in as a parameter to the module 
-			would also need a string to supply the name for the function 
-			or possibly store a reference to it, then add it to the scope facade
 
 		- make it work with module calls
 			function.toString sometimes puts all the statements on one line, 
@@ -79,6 +74,12 @@
 			if the test doesn't match 
 
 	Done:
+		- arguments.callee doesn't work, as it's pointing at the anonymous
+			function in the eval, not the original caller
+			also wouldn't work to set a property on callee, or to recurse
+
+		- treat watch expressions as assertions, show only when false
+
 		- a property on a function shadows a var in the parent scope of the same name
 			that's because we were calling walkScopeChain starting from the 
 				calling function itself, which added the properties on the 
@@ -157,12 +158,11 @@ try { (function() {
 		inFunctionName = inFunctionName.slice(0, -1);
 		
 		var test = inExpression,
-			prefix = "     ";
+			prefix = " ";
 		
 		if (/[<>=]+/.test(test)) {
-			test = '(' + test + ')';
-			return '(' + test + ' ? log("' + inFunctionName + prefix + test + 
-				' :", ' + test + ') : "");';
+			return '((' + test + ') ? "" : log("' + inFunctionName + prefix + 
+				'ASSERTION FAILED:", ' + test.quote() + '));';
 		} else {
 			return 'log("' + inFunctionName + prefix + test + ':", ' + test + ');';
 		}
@@ -284,8 +284,7 @@ try { (function() {
 			inWhitespace = (inWhitespace || "").replace(/\n/g, "").replace(/\t/g, "  ");
 			
 				// display the function name and statement in the console
-			var logCall = 'log(' + (functionName + inWhitespace + inStatement).quote() + ');\n' + 
-				watchedVars;
+			var logCall = 'log(' + (functionName + inWhitespace + inStatement).quote() + ');\n';
 
 				// put the log call before the statement, so that we can see a
 				// function call before the code steps into the function.  doing 
@@ -294,8 +293,10 @@ try { (function() {
 				// last line in the block and stick the log call before it, which
 				// breaks the syntax.  but toString on a function puts all var
 				// definitions on a single line, as well as a mutli-line object
-				// definition, like var foo = { bar: 42 }.
-			return logCall + inWholeLine;
+				// definitions, like var foo = { bar: 42 }.  we want to add the
+				// watchedVars after the statement, so that it shows the value
+				// of the watched vars after the statement is executed.
+			return logCall + inWholeLine + watchedVars;
 		}
 
 			// adjust the optional parameters 
@@ -319,7 +320,7 @@ try { (function() {
 			paramLog,
 			watchedVars = "",
 			traceMatch;
-			
+
 			// add a colon after the function name, if there is one
 		functionName = functionName ? functionName + ": " : "";
 
@@ -380,6 +381,12 @@ try { (function() {
 		body = body.replace(/^(\s*)((?:if|for|while)\s*\([^{]+\)\s*\{)/mg, 
 			logStatement);
 
+			// override the arguments var with the caller's arguments so that
+			// things like arguments.callee correctly point to the caller.  we
+			// do this at the very beginning of the function, but after all the
+			// statements have been logged, so that this doesn't get logged.
+		body = 'arguments = __CALLER_ARGS__;\n' + body;
+
 			// wrap the body in an anonymous function so our caller can execute
 			// it in the caller's scope, and apply it to the caller's this value 
 			// and arguments.  we have to pass the caller's this and arguments 
@@ -390,8 +397,8 @@ try { (function() {
 			// this and args so that hopefully, the caller doesn't have anything
 			// with the same names in its scope. 
 		body = '(function(){ var returnValue = (function(){' + 
-			paramLog + body + 
-			'}).apply(__CALLER_THIS__, __CALLER_ARGS__); log("' + functionName + 'return", returnValue); return returnValue; })();';
+			paramLog + body + '}).apply(__CALLER_THIS__, __CALLER_ARGS__); log("' + 
+			functionName + 'returns:", returnValue); return returnValue; })();';
 
 			// create a facade object that maps all of the identifiers in the
 			// our caller's scope chain to the owning scope, and then eval the 
