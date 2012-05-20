@@ -280,7 +280,8 @@ try { (function() {
 			inWhitespace = (inWhitespace || "").replace(/\n/g, "").replace(/\t/g, "  ");
 			
 				// display the function name and statement in the console
-			var logCall = 'log(' + (functionName + inWhitespace + inStatement).quote() + ');\n';
+			var logCall = 'log(' + (functionName + inWhitespace + inStatement).quote() + ');',
+				code;
 
 			if (/^(return|continue|break)[\s;]/.test(inStatement)) {
 					// since putting a log call after return, continue or break 
@@ -289,12 +290,12 @@ try { (function() {
 					// token followed by a space or ;.  toString always puts a
 					// space after a return, even if the source looks like
 					// return(foo);
-				return logCall + watchedVars + inWholeLine;
+				code = [logCall, watchedVars, inWholeLine];
 			} else if (/^(for|while)\s*\(/.test(inStatement) || /^do\s+\{/.test(inStatement)) {
 					// we want to put the log call and watched vars after the
 					// looping statement so that we see them each time through
 					// the loop
-				return inWholeLine + logCall + watchedVars;
+				code = [inWholeLine, logCall, watchedVars];
 			} else {
 					// put the log call before the statement, so that we can see a
 					// function call before the code steps into the function.  doing 
@@ -306,8 +307,10 @@ try { (function() {
 					// definitions, like var foo = { bar: 42 }.  we want to add the
 					// watchedVars after the statement, so that it shows the value
 					// of the watched vars after the statement is executed.
-				return logCall + inWholeLine + watchedVars;
+				code = [logCall, inWholeLine, watchedVars];
 			}
+
+			return code.join("\n");
 		}
 
 			// adjust the optional parameters 
@@ -343,7 +346,7 @@ try { (function() {
 					// callbacks when a property changes.  booyah.
 				return logWatched(watched, functionName);
 			});
-			watchedVars = watchedVars.join("\n") + "\n";
+			watchedVars = watchedVars.join("\n");
 		}
 
 			// create a log statement to display the function's parameters.
@@ -352,11 +355,8 @@ try { (function() {
 			return [(param + ":").quote(), param];
 		}));
 		
-			// add the log calls for the watched variables to the end of the
-			// param log call, so that the current state of the watched vars is
-			// shown as soon as the function is entered
 		paramLog.push(")".quote());
-		paramLog = 'log(' + paramLog.join(", ") + ');\n' + watchedVars;
+		paramLog = 'log(' + paramLog.join(", ") + ');\n';
 
 		traceMatch = body.match(/return\s+trace\s*\([^)]*\)\s*;/);
 
