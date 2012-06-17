@@ -68,8 +68,8 @@ try { (function() {
 
 	// =======================================================================
 	function map(obj, iterator, context) {
-		var	results	= [];
-		if (obj	== null) { return results; }
+		var results = [];
+		if (obj == null) { return results; }
 
 		forEach(obj, function(value, index, list) {
 			results[results.length] = iterator.call(context, value, index, list);
@@ -252,7 +252,7 @@ try { (function() {
 				// called "caller" on our function object, which then overwrites
 				// the arguments.callee.caller property.  ffs.
 		var callerFunc = arguments.callee.caller,
-			__CALLER_ARGS__ = callerFunc.arguments,			
+			__CALLER_ARGS__ = callerFunc.arguments,
 			callerSource = arguments.callee.caller.toString(),
 				// ignore the calling function's name if one was passed in
 			functionName = inFunctionName || callerFunc.name,
