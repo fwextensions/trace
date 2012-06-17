@@ -16,41 +16,45 @@ To use the trace library, you will need to download and install my [Fireworks Co
 
 Imagine you’ve written the following (not very useful) script:
 
-	function myBuggyFunc(count)
-	{
-		var dom = fw.getDocumentDOM();
-		dom.selectAll();
-		dom.clipCopy();
-		dom.deleteSelection();
-		
-		for (var i = 0; i < count; i++) {
-			dom.clipPaste();
-			dom.moveSelectionTo({ x: i * 10, y: i * 10 });
-		}
+```JavaScript
+function myBuggyFunc(count)
+{
+	var dom = fw.getDocumentDOM();
+	dom.selectAll();
+	dom.clipCopy();
+	dom.deleteSelection();
+	
+	for (var i = 0; i < count; i++) {
+		dom.clipPaste();
+		dom.moveSelectionTo({ x: i * 10, y: i * 10 });
 	}
+}
 
-	myBuggyFunc();
+myBuggyFunc();
+```
 
 It’s supposed to select everything on the current state, copy it, delete it, then paste it multiple times, each time positioning the copy 10px away from the previous copy (like I said, not terribly useful).  When you run the code, Fireworks just says “Could not run the script. A parameter was incorrect”.  But which API call is wrong?
 
 Instead of manually adding `log()` calls to the code, we’ll use the trace library to do it for us.  First, open the Fireworks Console panel and then add `return trace(this);` at the top of the function you want to trace.  In our example, it would look like this:
 
-	function myBuggyFunc(count)
-	{
-		return trace(this);
-		
-		var dom = fw.getDocumentDOM();
-		dom.selectAll();
-		dom.clipCopy();
-		dom.deleteSelection();
-		
-		for (var i = 0; i < count; i++) {
-			dom.clipPaste();
-			dom.moveSelectionTo({ x: i * 10, y: i * 10 });
-		}
+```JavaScript
+function myBuggyFunc(count)
+{
+	return trace(this);
+	
+	var dom = fw.getDocumentDOM();
+	dom.selectAll();
+	dom.clipCopy();
+	dom.deleteSelection();
+	
+	for (var i = 0; i < count; i++) {
+		dom.clipPaste();
+		dom.moveSelectionTo({ x: i * 10, y: i * 10 });
 	}
+}
 
-	myBuggyFunc();
+myBuggyFunc();
+```
 
 We’ll look at how that line works later, but for now, just try running your script.  You should see the following lines in the Fireworks Console panel:
 
@@ -78,22 +82,24 @@ So now we’re getting past the `deleteSelection()` line, but seem to be going rig
 
 We need to pass something in the `count` parameter to get the for-loop started.  Let’s change the code to look like this:
 
-	function myBuggyFunc(count)
-	{
-		return trace(this);
-		
-		var dom = fw.getDocumentDOM();
-		dom.selectAll();
-		dom.clipCopy();
-		dom.deleteSelection(false);
-		
-		for (var i = 0; i < count; i++) {
-			dom.clipPaste();
-			dom.moveSelectionTo({ x: i * 10, y: i * 10 });
-		}
-	}
+```JavaScript
+function myBuggyFunc(count)
+{
+	return trace(this);
 	
-	myBuggyFunc(3);
+	var dom = fw.getDocumentDOM();
+	dom.selectAll();
+	dom.clipCopy();
+	dom.deleteSelection(false);
+	
+	for (var i = 0; i < count; i++) {
+		dom.clipPaste();
+		dom.moveSelectionTo({ x: i * 10, y: i * 10 });
+	}
+}
+
+myBuggyFunc(3);
+```
 
 Now the console should look like this:
 
@@ -108,22 +114,24 @@ Now the console should look like this:
 
 At least we can sees that we’re stepping into the for-loop now, and that the `clipPaste()` call works.  But there seems to be a problem with `moveSelectionTo()`.  That function requires two additional parameters, besides the location to which you’re moving the selection.  So let’s pass `false` for those parameters:
 
-	function myBuggyFunc(count)
-	{
-		return trace(this);
-		
-		var dom = fw.getDocumentDOM();
-		dom.selectAll();
-		dom.clipCopy();
-		dom.deleteSelection(false);
-		
-		for (var i = 0; i < count; i++) {
-			dom.clipPaste();
-			dom.moveSelectionTo({ x: i * 10, y: i * 10 }, false, false);
-		}
-	}
+```JavaScript
+function myBuggyFunc(count)
+{
+	return trace(this);
 	
-	myBuggyFunc(3);
+	var dom = fw.getDocumentDOM();
+	dom.selectAll();
+	dom.clipCopy();
+	dom.deleteSelection(false);
+	
+	for (var i = 0; i < count; i++) {
+		dom.clipPaste();
+		dom.moveSelectionTo({ x: i * 10, y: i * 10 }, false, false);
+	}
+}
+
+myBuggyFunc(3);
+```
 
 Now the console trace will show that every line is executing correctly:
 
@@ -147,18 +155,20 @@ We can see that the loop executes 3 times, which corresponds to the count value 
 
 Note that the error that causes execution to halt will not always be on the last line displayed in the console.  If the next line is the beginning of a loop or an `if` statement, then the problem might be with that line, since those statements are displayed only when execution has entered the block.  For instance, tracing this poorly written function:
 
-	function findFoo()
-	{
-		return trace(this);
+```JavaScript
+function findFoo()
+{
+	return trace(this);
+	
+	var i = 0;
 		
-		var i = 0;
-			
-		while (fw.selection[i].name != "foo") {
-			i++;
-		}
-		
-		return fw.selection[i];
+	while (fw.selection[i].name != "foo") {
+		i++;
 	}
+	
+	return fw.selection[i];
+}
+```
 
 displays this in the console:
 
@@ -174,7 +184,9 @@ Once you’ve figured out where the bug is, you can remove the tracing by just del
 
 Besides tracing each line, you can also watch variables change as your code executes by passing an array of strings to the `trace()` call.  Each string is evaluated after every line of code, and its current result is displayed under the line.  For instance, if you changed the `trace()` call in `myBuggyFunc()` to this:
 
+```JavaScript
 	return trace(this, ["i"]);
+```
 
 Then the trace output would look like this:
 
@@ -234,15 +246,17 @@ This will display a message when there’s nothing selected on the canvas.  It sho
 
 The `trace()` call can figure out the calling function’s name only if it is declared with a name, like `function foo() {...}`.  If the function is assigned to an object property, however, it typically won’t have a name.  This code:
 
-	var obj = {
-		myBuggyFunc: function(count)
-		{
-			return trace(this);
-			...
-		}
-	};
-	
-	obj.myBuggyFunc(3);
+```JavaScript
+var obj = {
+	myBuggyFunc: function(count)
+	{
+		return trace(this);
+		...
+	}
+};
+
+obj.myBuggyFunc(3);
+```
 
 will output a trace like this: 
 
@@ -253,11 +267,13 @@ will output a trace like this:
 
 If you’d like a function name to appear (maybe you’re tracing two different functions at once), you can pass a string to `trace()` that will be displayed at the beginning of each line:
 
-	var obj = {
-		myBuggyFunc: function(count)
-		{
-			return trace(this, "my method");
- 			...
+```JavaScript
+var obj = {
+	myBuggyFunc: function(count)
+	{
+		return trace(this, "my method");
+		...
+```
 
 This will show `my method` in the trace:
 
@@ -275,9 +291,11 @@ While the trace library can make debugging Fireworks code a lot less painful, it
 
 Another limitation is that if your code contains property names that have to be quoted, adding the trace call will break your code.  For instance, if your function contains something like this:
 
-	var o = {
-		"foo bar": 42
-	};
+```JavaScript
+var o = {
+	"foo bar": 42
+};
+```
 
 you’ll get an error like “missing : after property id”.  This is because `trace()` calls `toString()` on the function you pass to it, and the ancient JS engine in Fireworks doesn’t handle these property names correctly.  It returns `var o = {foo bar:42};` for that code, which is obviously wrong.  There’s no way to work around this, unfortunately, other than by commenting out such properties while you’re debugging.  
 
@@ -306,19 +324,21 @@ Accomplishing this took some spelunking into the source code for the Fireworks J
 
 To calculate the correct context in which to evaluate your function’s code, `trace()` follows the `__parent__` scope chain back until it finds the start of the script.  Then, it walks back down the chain, adding every property in every scope to a single “façade” object that represents your function’s context.  But it can’t simply copy the value to the façade.  Consider this code:
 
-	(function() {
-		var foo = 0;
+```JavaScript
+(function() {
+	var foo = 0;
+	
+	function bar(x)
+	{
+		return trace(this, ["foo"]);
 		
-		function bar(x)
-		{
-			return trace(this, ["foo"]);
-			
-			foo += x;
-		}
-		
-		bar(10);
-		log(foo); // ==> 10
-	})();
+		foo += x;
+	}
+	
+	bar(10);
+	log(foo); // ==> 10
+})();
+```
 
 The `bar()` function that is being traced updates the `foo` variable, which is declared in its containing scope.  After `bar()` completes, `foo` should be `10`.  But if the value was only getting changed on the façade object, then the actual `foo` variable in the outer scope wouldn’t change.
 
@@ -328,28 +348,32 @@ After walking the chain to the innermost scope, the traced function’s `__call__`
 
 (As an aside, it’s sort of mind-blogging that the `__call__` object is mutable.  Consider this code:
 
-	(function() {
-		function foo()
-		{
-			bar();
-			log(baz);
-		}
-		
-		function bar()
-		{
-			arguments.callee.caller.__call__.baz = "hello, foo";
-		}
-		
-		foo(); // ==> hello, foo
-	})();
+```JavaScript
+(function() {
+	function foo()
+	{
+		bar();
+		log(baz);
+	}
+	
+	function bar()
+	{
+		arguments.callee.caller.__call__.baz = "hello, foo";
+	}
+	
+	foo(); // ==> hello, foo
+})();
+```
 
 Wheeeeee!)
 
 Once the façade object contains the full context of the function that’s being traced, it’s used in a `with` block that consists of a call to `eval()`, which is what actually executes the code:
 
-	with (getScopeFacade(callerFunc)) {
-		return eval(body);
-	}
+```JavaScript
+with (getScopeFacade(callerFunc)) {
+	return eval(body);
+}
+```
 
 That’s a whole lot of ugly right there.  `callerFunc` is the function that called `trace()`, and `body` is the string of statements and `log()` calls that’s been built up by examining and manipulating `callerFunc.toString()`.
 
