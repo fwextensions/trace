@@ -220,7 +220,7 @@ try { (function() {
 					// space after a return, even if the source looks like
 					// return(foo);
 				code = [logCall, watchedVars, inWholeLine];
-			} else if (/^(for|while)\s*\(/.test(inStatement) || /^do\s+\{/.test(inStatement)) {
+			} else if (/^(for|while|if)\s*\(/.test(inStatement) || /^(\}\s+else|do)\s+\{/.test(inStatement)) {
 					// we want to put the log call and watched vars after the
 					// looping statement so that we see them each time through
 					// the loop
@@ -306,7 +306,7 @@ try { (function() {
 
 			// this monster regex will:
 			// 
-			// - add a log call after the opening brace of an if/for/while block.
+			// - add a log call after the opening brace of an if/else/for/while block.
 			// but do so only if there's a space in front of the if, to avoid
 			// sticking log calls in the middle of another log call, which can
 			// happen with a nested function definition.  FW returns the body of
@@ -320,7 +320,7 @@ try { (function() {
 			// - add a log call before each ;\n to display the statement
 			// 
 			// - add a log call after each do statement
-		body = body.replace(/^(\s*)((?:(?:if|for|while)\s+\([^{]+\)\s*\{)|(?:[^\n]+;)|(?:do\s+\{))\s*$/mg, 
+		body = body.replace(/^(\s*)((?:(?:if|for|while)\s+\([^{]+\)\s*\{)|(?:[^\n]+;)|(?:do\s+\{)|(?:\}\s+else\s+\{))\s*$/mg, 
 			logStatement);
 
 			// override the arguments var with the caller's arguments so that

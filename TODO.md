@@ -5,6 +5,19 @@
 	or possibly store a reference to it, then add it to the scope facade
 	if a function has a local log var, this will break
 
+- maybe possible to pass the function to trace and have it be wrapped
+	then wouldn't need to call return trace(this) from inside it
+	could have untrace() to remove wrapping
+	maybe add trace to console and don't have a global?
+	or do one-off tracing
+		function foo(a) { ... }
+		trace(foo)(10);
+	lets you do on-demand tracing when certain condition is met
+	would probably need to fix up arguments so callee points to the wrapped func
+- else if branches aren't handled well
+	toString puts a brace between the else and if
+- provide way for caller to give trace a different name, in case the local context
+	already has something called "trace"
 - make sure nested calls and calls to a function from one scope that
 	calls a function in another work
 
